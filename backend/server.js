@@ -13,7 +13,7 @@ import aiRoutes from './routes/ai.js';
 import documentsRoutes from './routes/documents.js';
 import tasksRoutes from './routes/tasks.js';
 import emailRoutes from './routes/email.js';
-import whatsappRoutes from './routes/whatsapp.js';
+
 
 // Load environment variables
 dotenv.config();
@@ -93,17 +93,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// QR Code page
-app.get('/qr', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'qr.html'));
-});
 
 // API Routes
 app.use('/api/ai', aiRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/email', emailRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
+
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -1,5 +1,6 @@
 import express from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateSummary as svcGenerateSummary } from '../services/aiSummary.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
@@ -12,6 +13,9 @@ const router = express.Router();
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const DEFAULT_MODEL = 'gemini-1.5-flash';
+const modelName = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+console.log('AI route using model:', modelName);
 
 // Configure multer for file uploads
 const upload = multer({
@@ -37,121 +41,8 @@ const upload = multer({
   }
 });
 
-// Extract text from various file formats
-async function extractTextFromFile(filePath, mimetype) {
-  try {
-    let text = '';
-    
-    switch (mimetype) {
-      case 'application/pdf':
-        const pdfBuffer = await fs.readFile(filePath);
-        const pdfData = await pdfParse(pdfBuffer);
-        text = pdfData.text;
-        break;
-        
-      case 'application/msword':
-      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-        const docBuffer = await fs.readFile(filePath);
-        const docResult = await mammoth.extractRawText({ buffer: docBuffer });
-        text = docResult.value;
-        break;
-        
-      case 'application/vnd.ms-excel':
-      case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-        const workbook = xlsx.readFile(filePath);
-        const sheets = workbook.SheetNames;
-        text = sheets.map(sheet => {
-          const worksheet = workbook.Sheets[sheet];
-          return xlsx.utils.sheet_to_txt(worksheet);
-        }).join('\\n\\n');
-        break;
-        
-      case 'text/plain':
-        text = await fs.readFile(filePath, 'utf8');
-        break;
-        
-      default:
-        throw new Error('Unsupported file type');
-    }
-    
-    return text;
-  } catch (error) {
-    console.error('Error extracting text from file:', error);
-    throw new Error('Failed to extract text from file');
-  }
-}
-
-// Generate AI summary using Gemini
-async function generateSummary(text, options = {}) {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    
-    const prompt = `
-Please analyze the following document and provide a comprehensive summary in JSON format with the following structure:
-
-{
-  "executiveSummary": "A brief executive summary of the document",
-  "keyPoints": ["Array of key points from the document"],
-  "actionItems": [
-    {
-      "task": "Specific task description",
-      "priority": "high|medium|low",
-      "deadline": "suggested deadline",
-      "department": "responsible department",
-      "estimatedHours": "estimated completion time"
-    }
-  ],
-  "complianceItems": ["Array of compliance-related items"],
-  "riskFactors": ["Array of identified risks"],
-  "recommendations": ["Array of recommendations"],
-  "categories": ["Array of document categories/tags"],
-  "confidence": "confidence score as percentage",
-  "language": "detected language (English/Malayalam/Mixed)",
-  "documentType": "type of document",
-  "urgencyLevel": "low|medium|high|critical"
-}
-
-Document Text:
-${text}
-
-Please ensure the analysis is specific to KMRL (Kochi Metro Rail Limited) context and includes relevant operational, safety, and compliance considerations.
-    `;
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const summaryText = response.text();
-    
-    // Parse JSON response
-    let summary;
-    try {
-      // Extract JSON from the response (remove any markdown formatting)
-      const jsonMatch = summaryText.match(/```json\\n?([\\s\\S]*?)```/) || summaryText.match(/\\{[\\s\\S]*\\}/);
-      const jsonText = jsonMatch ? jsonMatch[1] || jsonMatch[0] : summaryText;
-      summary = JSON.parse(jsonText);
-    } catch (parseError) {
-      console.error('Error parsing JSON response:', parseError);
-      // Fallback to a structured response
-      summary = {
-        executiveSummary: summaryText.substring(0, 300) + '...',
-        keyPoints: ['Summary generation completed'],
-        actionItems: [],
-        complianceItems: [],
-        riskFactors: [],
-        recommendations: [],
-        categories: ['General'],
-        confidence: '85',
-        language: 'English',
-        documentType: 'General Document',
-        urgencyLevel: 'medium'
-      };
-    }
-    
-    return summary;
-  } catch (error) {
-    console.error('Error generating summary with Gemini:', error);
-    throw new Error('Failed to generate AI summary');
-  }
-}
+// Use the centralized AI summary service which handles API-key vs ADC modes
+// (`svcGenerateSummary`) instead of duplicating client logic here.
 
 // POST /api/ai/summarize - Summarize document content
 router.post('/summarize', upload.single('document'), async (req, res) => {
@@ -180,7 +71,7 @@ router.post('/summarize', upload.single('document'), async (req, res) => {
     }
     
     // Generate AI summary
-    const summary = await generateSummary(text, req.body.options);
+    const summary = await svcGenerateSummary(text, req.body.options);
     
     // Add metadata
     const result = {
@@ -189,7 +80,7 @@ router.post('/summarize', upload.single('document'), async (req, res) => {
       metadata: {
         originalLength: text.length,
         generatedAt: new Date().toISOString(),
-        model: 'gemini-pro',
+        model: modelName,
         processingTime: Date.now() - req.startTime
       }
     };
@@ -214,7 +105,7 @@ router.post('/analyze-text', async (req, res) => {
       });
     }
     
-    const summary = await generateSummary(text, options);
+    const summary = await svcGenerateSummary(text, options);
     
     const result = {
       id: uuidv4(),
@@ -222,7 +113,7 @@ router.post('/analyze-text', async (req, res) => {
       metadata: {
         originalLength: text.length,
         generatedAt: new Date().toISOString(),
-        model: 'gemini-pro',
+        model: modelName,
         processingTime: Date.now() - req.startTime
       }
     };
@@ -239,24 +130,21 @@ router.post('/analyze-text', async (req, res) => {
 // GET /api/ai/health - Check AI service health
 router.get('/health', async (req, res) => {
   try {
-    // Test Gemini API connectivity
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const testResult = await model.generateContent('Say "OK" if you can receive this message.');
-    const response = await testResult.response;
-    
+    // Use the shared generateSummary to validate AI connectivity.
+    await svcGenerateSummary('Say "OK" if you can receive this message.');
     res.json({
       status: 'healthy',
       geminiConnected: true,
       message: 'AI services are operational',
-      model: 'gemini-pro',
+      model: modelName,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('AI health check failed:', error);
+    console.error('AI health check failed:', error && (error.stack || error.message || error));
     res.status(503).json({
       status: 'unhealthy',
       geminiConnected: false,
-      error: error.message,
+      error: error.message || String(error),
       timestamp: new Date().toISOString()
     });
   }

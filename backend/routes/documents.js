@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import { summarizeFile } from '../services/aiSummary.js';
+import { summarizeText, extractTextFromFile } from '../services/aiSummary.js';
 
 const router = express.Router();
 
@@ -83,6 +84,26 @@ let documents = [
     updatedAt: '2024-01-15T10:00:00.000Z'
   }
 ];
+
+// Sanitize any existing in-memory documents that contain raw AI error messages
+// This prevents previously stored error text from being shown in the UI.
+(function sanitizeExistingSummaries() {
+  const errorIndicator = 'GoogleGenerativeAI Error';
+  const genericMessage = 'Document processed. AI summary temporarily unavailable. Check server logs for details.';
+  documents = documents.map(d => {
+    try {
+      if (d && d.summary && typeof d.summary.executiveSummary === 'string') {
+        const exec = d.summary.executiveSummary;
+        if (exec.includes(errorIndicator) || exec.includes('AI summary temporarily unavailable:')) {
+          d.summary.executiveSummary = genericMessage;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return d;
+  });
+})();
 
 // GET /api/documents - Get all documents with filtering
 router.get('/', (req, res) => {
@@ -213,11 +234,15 @@ router.post('/upload', upload.single('document'), async (req, res) => {
     try {
       summary = await summarizeFile(req.file.path, req.file.mimetype);
     } catch (err) {
-      console.error('AI summarization failed:', err);
+      // Log full error details on the server for debugging
+      console.error('AI summarization failed (details):', err && (err.stack || err));
+
+      // Provide a safe, generic message to the UI so internal errors aren't exposed.
+      const isApiKeyInvalid = err && err.message && err.message.includes('API_KEY_INVALID');
       summary = {
-        executiveSummary: err.message.includes('API_KEY_INVALID') 
+        executiveSummary: isApiKeyInvalid
           ? 'Document uploaded successfully. To enable AI summarization, please update your Gemini API key in the backend .env file.'
-          : `Document processed. AI summary temporarily unavailable: ${err.message}`,
+          : 'Document processed. AI summary temporarily unavailable. Check server logs for details.',
         keyPoints: ['Document uploaded successfully'],
         actionItems: [],
         complianceItems: [],
@@ -423,6 +448,73 @@ router.get('/stats/summary', (req, res) => {
     res.status(500).json({
       error: 'Failed to fetch document statistics'
     });
+  }
+});
+
+// Helper: guess mimetype from filename
+function guessMimeType(filename) {
+  const ext = (filename && filename.split('.').pop() || '').toLowerCase();
+  switch (ext) {
+    case 'pdf': return 'application/pdf';
+    case 'doc': return 'application/msword';
+    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls': return 'application/vnd.ms-excel';
+    case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'txt': return 'text/plain';
+    default: return null;
+  }
+}
+
+// POST /api/documents/reprocess/:id - Re-run AI summarization for a single document
+router.post('/reprocess/:id', async (req, res) => {
+  try {
+    const docIndex = documents.findIndex(d => d.id === req.params.id);
+    if (docIndex === -1) return res.status(404).json({ error: 'Document not found' });
+
+    const doc = documents[docIndex];
+    if (!doc.filePath) return res.status(400).json({ error: 'No filePath available to reprocess' });
+
+    const mimetype = guessMimeType(doc.originalName || doc.filename) || 'text/plain';
+    try {
+      const summary = await summarizeFile(doc.filePath, mimetype);
+      documents[docIndex].summary = summary;
+      documents[docIndex].updatedAt = new Date().toISOString();
+      return res.json({ message: 'Reprocessed', document: documents[docIndex] });
+    } catch (e) {
+      console.error('Reprocess failed for', doc.id, e);
+      return res.status(500).json({ error: 'Reprocess failed', details: String(e) });
+    }
+  } catch (error) {
+    console.error('Error in reprocess/:id', error);
+    res.status(500).json({ error: 'Failed to reprocess document' });
+  }
+});
+
+// POST /api/documents/reprocess-all - Re-run AI summarization for all documents
+router.post('/reprocess-all', async (req, res) => {
+  try {
+    const results = [];
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
+      if (!doc.filePath) {
+        results.push({ id: doc.id, status: 'skipped', reason: 'no filePath' });
+        continue;
+      }
+      const mimetype = guessMimeType(doc.originalName || doc.filename) || 'text/plain';
+      try {
+        const summary = await summarizeFile(doc.filePath, mimetype);
+        documents[i].summary = summary;
+        documents[i].updatedAt = new Date().toISOString();
+        results.push({ id: doc.id, status: 'ok' });
+      } catch (e) {
+        console.error('Reprocess failed for', doc.id, e);
+        results.push({ id: doc.id, status: 'error', error: String(e) });
+      }
+    }
+    res.json({ message: 'Reprocess completed', results });
+  } catch (error) {
+    console.error('Error in reprocess-all', error);
+    res.status(500).json({ error: 'Failed to reprocess all documents' });
   }
 });
 

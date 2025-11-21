@@ -59,17 +59,15 @@ export const Navigation = ({ isLoggedIn = false, userRole = "" }: NavigationProp
   // Fetch email notifications
   // Start services when component mounts
   useEffect(() => {
-    const startServices = async () => {
+        const startServices = async () => {
       try {
         // Start email service
         console.log('Starting email service...');
         await axios.post('https://documind-ai-kmrl-backend.onrender.com/api/email/start');
         console.log('Email service started successfully');
 
-        // Start WhatsApp service
-        console.log('Starting WhatsApp service...');
-        await axios.post('https://documind-ai-kmrl-backend.onrender.com/api/whatsapp/start');
-        console.log('WhatsApp service started successfully');
+            // WhatsApp service: disabled in this build to avoid QR/status logs
+            console.log('WhatsApp service is disabled in the client.');
       } catch (error) {
         console.error('Failed to start services:', error);
         // Don't retry on 429 (Too Many Requests)
@@ -91,17 +89,15 @@ export const Navigation = ({ isLoggedIn = false, userRole = "" }: NavigationProp
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        // Fetch email notifications
-        console.log('Fetching email notifications...');
-        const emailResponse = await axios.get('https://documind-ai-kmrl-backend.onrender.com/api/email/status');
-        console.log('Email status response:', emailResponse.data);
+      // Fetch email notifications
+      console.log('Fetching email notifications...');
+      const emailResponse = await axios.get('https://documind-ai-kmrl-backend.onrender.com/api/email/status');
+      console.log('Email status response:', emailResponse.data);
 
-        // Fetch WhatsApp notifications
-        console.log('Fetching WhatsApp notifications...');
-        const whatsappResponse = await axios.get('https://documind-ai-kmrl-backend.onrender.com/api/whatsapp/status');
-        console.log('WhatsApp status response:', whatsappResponse.data);
+      // WhatsApp status/fetch is disabled to avoid QR string in logs.
+      const whatsappResponse = { data: { newMessages: [], status: 'disabled' } };
 
-        const notifications: Notification[] = [];
+      const notifications: Notification[] = [];
 
         // Process email notifications
         if (emailResponse.data.newEmails?.length > 0) {
@@ -153,10 +149,7 @@ export const Navigation = ({ isLoggedIn = false, userRole = "" }: NavigationProp
           await axios.post('https://documind-ai-kmrl-backend.onrender.com/api/email/start');
         }
 
-        if (!whatsappResponse.data.status || whatsappResponse.data.status === 'stopped') {
-          console.log('WhatsApp service not running, starting it...');
-          await axios.post('https://documind-ai-kmrl-backend.onrender.com/api/whatsapp/start');
-        }
+        // WhatsApp service intentionally not started from the client.
       } catch (error) {
         console.error('Failed to fetch notifications:', error);
       }
