@@ -1,13 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
 import xlsx from 'xlsx';
 
-dotenv.config();
+// Note: dotenv.config() is called by server.js before importing this module
 console.log(
-  'Loading Gemini API key:',
+  'aiSummary.js: Gemini API key loaded:',
   process.env.GEMINI_API_KEY ? 'Key found (length: ' + process.env.GEMINI_API_KEY.length + ')' : 'No key found'
 );
 

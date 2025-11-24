@@ -1,5 +1,4 @@
 import express from 'express';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateSummary as svcGenerateSummary } from '../services/aiSummary.js';
 import multer from 'multer';
 import path from 'path';
@@ -8,13 +7,12 @@ import { v4 as uuidv4 } from 'uuid';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
 import xlsx from 'xlsx';
+import { extractTextFromFile } from '../services/aiSummary.js';
 
 const router = express.Router();
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const DEFAULT_MODEL = 'gemini-1.5-flash';
-const modelName = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+// Use model from env or fallback list (delegated to aiSummary service)
+const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 console.log('AI route using model:', modelName);
 
 // Configure multer for file uploads

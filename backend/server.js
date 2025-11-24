@@ -14,12 +14,12 @@ import documentsRoutes from './routes/documents.js';
 import tasksRoutes from './routes/tasks.js';
 import emailRoutes from './routes/email.js';
 
-
-// Load environment variables
-dotenv.config();
-
+// Define __filename and __dirname first
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env file
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
