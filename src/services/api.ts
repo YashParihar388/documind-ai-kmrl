@@ -1,5 +1,10 @@
-// API configuration
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://documind-ai-kmrl-backend.onrender.com/api';
+// API configuration - Use localhost backend
+const API_BASE_URL = 'http://localhost:3001/api';
+
+// Debug: Log which API endpoint is being used
+if (typeof window !== 'undefined') {
+  console.log('API Configuration:', { API_BASE_URL });
+}
 
 // API client configuration
 const apiClient = {

@@ -1,7 +1,5 @@
-// API configuration
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://documind-ai-kmrl-backend.onrender.com/api' 
-  : 'https://documind-ai-kmrl-backend.onrender.com/api';
+// API configuration - Use localhost backend
+const API_BASE_URL = 'http://localhost:3001/api';
 
 // API client with error handling
 class APIClient {

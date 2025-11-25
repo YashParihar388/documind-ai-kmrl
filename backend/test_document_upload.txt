@@ -1,0 +1,12 @@
+﻿This is a test document for the KMRL DocuMind system.
+
+Key Information:
+- This document tests the AI summarization feature
+- It should be processed with the gemini-2.5-flash model
+- The summary should appear without errors
+
+Action Items:
+1. Verify AI processing works correctly
+2. Confirm summary is generated properly
+3. Test document storage and retrieval
+
